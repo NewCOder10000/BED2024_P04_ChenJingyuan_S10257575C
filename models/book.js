@@ -1,20 +1,5 @@
-/*class Book {
-    constructor(id, title, author) {
-        this.id = id;
-        this.title = title;
-        this.author = author;
-    }
-
-    // ... methods for CRUD operations (explained later)
-}
-
-module.exports = Book; */
-
-// Remember: This is a simplified example using an in-memory array. In a real-world scenario, you would use a database to store books data persistently.
-const books = [
-    { id: 1, title: "The Lord of the Rings", author: "J.R.R. Tolkien" },
-    { id: 2, title: "Pride and Prejudice", author: "Jane Austen" },
-];
+const sql = require("mssql");
+const dbConfig = require("../dbConfig");
 
 class Book {
     constructor(id, title, author) {
@@ -24,55 +9,86 @@ class Book {
     }
 
     static async getAllBooks() {
-        // Replace this with your actual logic to retrieve all books from the data source (e.g., database)
-        return books; // Assuming 'books' is your in-memory array (for simplicity)
+        const connection = await sql.connect(dbConfig);
+
+        const sqlQuery = `SELECT * FROM Books`; // Replace with your actual table name
+
+        const request = connection.request();
+        const result = await request.query(sqlQuery);
+
+        connection.close();
+
+        return result.recordset.map(
+            (row) => new Book(row.id, row.title, row.author)
+        ); // Convert rows to Book objects
     }
 
     static async getBookById(id) {
-        const books = await this.getAllBooks(); // Await the promise to get books
-        const book = books.find((book) => book.id === id);
-        return book;
+        const connection = await sql.connect(dbConfig);
+
+        const sqlQuery = `SELECT * FROM Books WHERE id = @id`; // Parameterized query
+
+        const request = connection.request();
+        request.input("id", id);
+        const result = await request.query(sqlQuery);
+
+        connection.close();
+
+        return result.recordset[0]
+            ? new Book(
+                result.recordset[0].id,
+                result.recordset[0].title,
+                result.recordset[0].author
+            )
+            : null; // Handle book not found
     }
 
     static async createBook(newBookData) {
-        const books = await this.getAllBooks(); // Await the promise to get books
-        const newBook = new Book(
-            books.length + 1,
-            newBookData.title,
-            newBookData.author
-        );
-        // Replace this with your actual logic to create a book in the data source (e.g., database)
-        books.push(newBook); // Assuming in-memory array (for simplicity)
-        return newBook;
+        const connection = await sql.connect(dbConfig);
+
+        const sqlQuery = `INSERT INTO Books (title, author) VALUES (@title, @author); SELECT SCOPE_IDENTITY() AS id;`; // Retrieve ID of inserted record
+
+        const request = connection.request();
+        request.input("title", newBookData.title);
+        request.input("author", newBookData.author);
+
+        const result = await request.query(sqlQuery);
+
+        connection.close();
+
+        // Retrieve the newly created book using its ID
+        return this.getBookById(result.recordset[0].id);
     }
 
     static async updateBook(id, newBookData) {
-        const books = await this.getAllBooks(); // Await the promise to get books
-        const existingBookIndex = books.findIndex((book) => book.id === id);
-        if (existingBookIndex === -1) {
-            return null; // Indicate book not found
-        }
+        const connection = await sql.connect(dbConfig);
 
-        const updatedBook = {
-            ...books[existingBookIndex],
-            ...newBookData,
-        };
+        const sqlQuery = `UPDATE Books SET title = @title, author = @author WHERE id = @id`; // Parameterized query
 
-        // Replace this with your actual logic to update the book in the data source (e.g., database)
-        books[existingBookIndex] = updatedBook;
-        return updatedBook;
+        const request = connection.request();
+        request.input("id", id);
+        request.input("title", newBookData.title || null); // Handle optional fields
+        request.input("author", newBookData.author || null);
+
+        await request.query(sqlQuery);
+
+        connection.close();
+
+        return this.getBookById(id); // returning the updated book data
     }
 
     static async deleteBook(id) {
-        const books = await this.getAllBooks(); // Await the promise to get books
-        const bookIndex = books.findIndex((book) => book.id === id);
-        if (bookIndex === -1) {
-            return false; // Indicate book not found
-        }
+        const connection = await sql.connect(dbConfig);
 
-        // Replace this with your actual logic to delete the book from the data source (e.g., database)
-        books.splice(bookIndex, 1);
-        return true;
+        const sqlQuery = `DELETE FROM Books WHERE id = @id`; // Parameterized query
+
+        const request = connection.request();
+        request.input("id", id);
+        const result = await request.query(sqlQuery);
+
+        connection.close();
+
+        return result.rowsAffected > 0; // Indicate success based on affected rows
     }
 }
 
